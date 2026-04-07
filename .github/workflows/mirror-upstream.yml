@@ -8,6 +8,7 @@ on:
 jobs:
   detect-and-release:
     strategy:
+      fail-fast: false
       matrix:
         alpine: ["v3.22", "v3.23", "edge"]
     runs-on: ubuntu-latest
@@ -22,16 +23,11 @@ jobs:
       - name: Fetch Tor Version
         id: tor
         run: |
-          # Use a temporary alpine container to query the APK index
           REPO="https://dl-cdn.alpinelinux.org/alpine/${{ matrix.alpine }}/community"
-          # community usually contains tor, but we add main just in case
           MAIN="https://dl-cdn.alpinelinux.org/alpine/${{ matrix.alpine }}/main"
           
           FULL_VER=$(docker run --rm alpine:latest apk info --repository $REPO --repository $MAIN -v tor | head -n 1)
-          # FULL_VER looks like tor-0.4.8.13-r0
-          # We want 0.4.8.13-r0
           VERSION=${FULL_VER#tor-}
-          # SEMVER is just the Tor version without the -rX
           SEMVER=${VERSION%-r*}
           
           echo "full_version=$VERSION" >> $GITHUB_OUTPUT
@@ -41,28 +37,22 @@ jobs:
       - name: Hydrate apko.yaml
         run: |
           export ALPINE_RELEASE=${{ matrix.alpine }}
-          # We pin the exact version in the packages list
-          export PACKAGE_LIST="- tor=${{ steps.tor.outputs.full_version }}\n    - ca-certificates\n    - musl"
-          
-          # Replace the placeholder in the template
-          # Note: We need a clever way to inject the pinned version into the packages list
-          # Let's adjust the template first or use sed here.
-          envsubst < apko.yaml.tmpl > apko-${{ matrix.alpine }}-${{ steps.tor.outputs.semver }}.yaml
+          envsubst < apko.yaml.tmpl > apko.yaml
           
           # Manually pin the version in the generated file
-          sed -i "s/- tor/- tor=${{ steps.tor.outputs.full_version }}/" apko-${{ matrix.alpine }}-${{ steps.tor.outputs.semver }}.yaml
+          sed -i "s/- tor/- tor=${{ steps.tor.outputs.full_version }}/" apko.yaml
+          cat apko.yaml
 
       - name: Check and Create Release
         run: |
-          TAG="${{ steps.tor.outputs.semver }}"
-          ASSET="apko-${{ matrix.alpine }}-${{ steps.tor.outputs.semver }}.yaml"
+          # Release tag format: <tor-version>-<alpine-version>
+          TAG="${{ steps.tor.outputs.semver }}-${{ matrix.alpine }}"
           
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists. Uploading asset if missing."
-            gh release upload "$TAG" "$ASSET" --clobber
+            echo "Release $TAG already exists. Skipping."
           else
             echo "Creating new release $TAG"
-            gh release create "$TAG" "$ASSET" \
+            gh release create "$TAG" "apko.yaml" \
               --title "Tor $TAG" \
-              --notes "Automated wrapper for Tor version $TAG tracking Alpine releases."
+              --notes "Automated mirror of Tor ${{ steps.tor.outputs.semver }} on Alpine ${{ matrix.alpine }}."
           fi
