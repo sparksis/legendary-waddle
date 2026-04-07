@@ -42,7 +42,7 @@ docker run -d \
 
 ## CI/CD Pipelines
 
-- **GitHub Actions:** Builds and publishes the multi-arch image to GHCR on every push to `main`.
+- **GitHub Actions:** Builds and publishes the multi-arch image to GHCR. We use industry-standard Docker actions (`metadata-action`, `login-action`) for tagging and authentication, and `actions/attest-build-provenance` for OCI attestations and image signing to ensure a secure and verifiable supply chain.
 - **GitLab CI:** Configured to build and publish the multi-arch image to the GitLab registry.
 
 ## Building Locally
