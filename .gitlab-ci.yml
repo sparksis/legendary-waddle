@@ -1,11 +1,42 @@
 stages:
-  - deploy
+  - build
+  - publish
+
+variables:
+  APKO_IMAGE: cgr.dev/chainguard/apko:latest
+
+.matrix-config:
+  parallel:
+    matrix:
+      - ALPINE_RELEASE: ["v3.22", "v3.23", "edge"]
+
+build-sbom:
+  extends: .matrix-config
+  image: $APKO_IMAGE
+  stage: build
+  script:
+    - apk add gettext # for envsubst
+    - envsubst < apko.yaml.tmpl > apko.yaml
+    - apko build apko.yaml tor-relay:${ALPINE_RELEASE} output.tar --arch x86_64,aarch64 --sbom-path sbom-${ALPINE_RELEASE}.spdx.json
+  artifacts:
+    paths:
+      - sbom-*.spdx.json
+      - apko.yaml
 
 publish:
-  image: cgr.dev/chainguard/apko
-  stage: deploy
+  extends: .matrix-config
+  image: $APKO_IMAGE
+  stage: publish
   script:
+    - apk add gettext
+    - envsubst < apko.yaml.tmpl > apko.yaml
     - apko login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
-    - apko publish apko.yaml $CI_REGISTRY_IMAGE:latest --arch x86_64,aarch64 -k keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
+    - |
+      TAGS="$CI_REGISTRY_IMAGE:${ALPINE_RELEASE}"
+      if [ "$ALPINE_RELEASE" = "edge" ]; then
+        TAGS="$TAGS,$CI_REGISTRY_IMAGE:latest,$CI_REGISTRY_IMAGE:edge,$CI_REGISTRY_IMAGE:edge-alpine-edge"
+      fi
+      apko publish apko.yaml $TAGS --arch x86_64,aarch64 -k keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
   only:
     - main
+    - tags

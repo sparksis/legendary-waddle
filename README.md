@@ -1,54 +1,45 @@
-# Hardened Multi-Arch Tor Relay (Apko)
+# Production-Hardened Tor Relay (Apko Mirror)
 
-This repository contains an `apko` configuration to build a minimal, hardened, and rootless Tor relay image based on **Alpine v3.23**.
+This repository provides a production-grade OCI factory for Tor relays, built with `apko` for zero-trust environments. The image is "distroless-style" (no shell) and mirrors the upstream Tor versions available in Alpine Linux.
 
 ## Features
 
-- **Minimalist:** No shell, no unnecessary packages. Built with `apko` for a tiny footprint (<15MB).
-- **Hardened:** Runs as a non-root `tor` user (UID/GID 101).
-- **Multi-Arch:** Supports both `x86_64` and `aarch64`.
-- **Dynamic Configuration:** Uses environment variables to configure the relay.
-- **Dual Registry:** Published to GitHub Container Registry (GHCR) and GitLab Container Registry.
+- **Zero-Trust Footprint:** No shell (`sh`/`bash`), no package manager, non-root execution (UID 101).
+- **Upstream Mirroring:** Release tags directly mirror the Tor version in Alpine repositories.
+- **Multi-Arch Automation:** Automated builds for `x86_64` and `aarch64`.
+- **Supply Chain Security:** SBOMs generated for every release and image signing via GitHub attestations.
 
-## Configuration
+## Configuration (Environment Variables)
 
-The relay can be configured using the following environment variables:
+The relay entrypoint supports the following variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TOR_NICKNAME` | The nickname for the Tor relay | `ApkoRelay` |
-| `TOR_BANDWIDTH_RATE` | Average bandwidth to use | `1 MByte` |
+| `TOR_NICKNAME` | Public nickname for the relay | `ApkoRelay` |
+| `TOR_BANDWIDTH_RATE` | Sustained bandwidth limit | `1 MByte` |
 | `TOR_BANDWIDTH_BURST` | Maximum bandwidth burst | `2 MByte` |
-| `TOR_CONTACT` | Contact info for the relay operator | `operator@example.com` |
+| `TOR_CONTACT` | Contact information for the operator | `operator@example.com` |
 
-## Running the Relay
+## Supported Tags (OCI Registry)
 
-To run the relay with default settings:
+Tags are dynamically generated based on the Alpine Linux APK index.
 
-```bash
-docker run -d --name tor-relay -p 9001:9001 ghcr.io/<your-repo>:latest
-```
+- **Pinned Releases**: `<tor-version>-alpine<alpine-version>` (e.g., `0.4.8.13-v3.23`)
+- **Floating Tags**: `latest` and `edge` (both tracking Alpine Edge for security patches).
 
-To run with custom settings:
+## Operational Excellence
 
-```bash
-docker run -d \
-  --name tor-relay \
-  -p 9001:9001 \
-  -e TOR_NICKNAME=MyRelay \
-  -e TOR_CONTACT="operator@example.com" \
-  ghcr.io/<your-repo>:latest
-```
+- **Versioning:** See [VERSIONING.md](VERSIONING.md) for our tagging strategy.
+- **Runbook:** Refer to [RUNBOOK.md](RUNBOOK.md) for health checks, key migration, and troubleshooting.
 
-## CI/CD Pipelines
+## Legal & Abuse
 
-- **GitHub Actions:** Builds and publishes the multi-arch image to GHCR. We use industry-standard Docker actions (`metadata-action`, `login-action`) for tagging and authentication, and `actions/attest-build-provenance` for OCI attestations and image signing to ensure a secure and verifiable supply chain.
-- **GitLab CI:** Configured to build and publish the multi-arch image to the GitLab registry.
+Running a Tor relay contributes to global privacy and freedom of information. However, operators should be aware of the legal landscape.
 
-## Building Locally
+### ISP Notice Template
+If you receive an inquiry from your ISP, you may use the following template:
+> To whom it may concern,
+> This IP address is hosting a Tor relay. Tor is a network of volunteer-run servers that helps people improve their privacy and security on the Internet. This relay is configured as a non-exit relay, meaning it only passes encrypted traffic within the Tor network and does not connect to the public Internet on behalf of users.
 
-To build the image locally using `apko`:
-
-```bash
-apko build apko.yaml tor-relay:latest output.tar --arch x86_64,aarch64
-```
+---
+*Built with ❤️ using [apko](https://github.com/chainguard-dev/apko)*
