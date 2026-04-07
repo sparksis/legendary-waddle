@@ -12,11 +12,11 @@ contents:
 accounts:
   groups:
     - groupname: tor
-      gid: 100
+      gid: 101
   users:
     - username: tor
-      uid: 100
-      gid: 100
+      uid: 101
+      gid: 101
       home: /var/lib/tor
   run-as: tor
 
@@ -24,7 +24,7 @@ environment:
   TOR_NICKNAME: ApkoRelay
   TOR_BANDWIDTH_RATE: 1 MByte
   TOR_BANDWIDTH_BURST: 2 MByte
-  TOR_CONTACT: none
+  TOR_CONTACT: "operator@example.com"
 
 entrypoint:
   command: ["/usr/bin/tor", "-f", "/etc/tor/torrc"]
@@ -33,13 +33,13 @@ paths:
   - path: /etc/tor/torrc
     source: torrc
     permissions: 0644
-    uid: 100
-    gid: 100
+    uid: 101
+    gid: 101
   - path: /var/lib/tor
     type: directory
     permissions: 0700
-    uid: 100
-    gid: 100
+    uid: 101
+    gid: 101
 
 archs:
   - x86_64
