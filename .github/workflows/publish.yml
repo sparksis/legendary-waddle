@@ -1,15 +1,28 @@
-name: Publish Tor Relay Image
+name: Publish Tor Relay Matrix
 
 on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
   schedule:
-    - cron: '0 0 * * *' # Daily at midnight for 'edge'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
   publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - alpine: "edge"
+            is_latest: true
+          - alpine: "v3.23"
+            is_latest: false
+            alias: "stable"
+          - alpine: "v3.22"
+            is_latest: false
+            alias: "oldstable"
+
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,29 +34,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set Environment Variables
-        id: vars
+      - name: Generate apko.yaml
         run: |
-          if [[ $GITHUB_EVENT_NAME == 'schedule' ]]; then
-            echo "tag=edge" >> $GITHUB_OUTPUT
-            echo "alpine_version=edge" >> $GITHUB_OUTPUT
-          elif [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-            echo "alpine_version=v3.23" >> $GITHUB_OUTPUT
-          else
-            echo "tag=latest" >> $GITHUB_OUTPUT
-            echo "alpine_version=v3.23" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Generate Locked apko.yaml
-        run: |
-          # Dynamically set the Alpine repository based on the target version
-          SED_REPO="s|https://dl-cdn.alpinelinux.org/alpine/v3.23|https://dl-cdn.alpinelinux.org/alpine/${{ steps.vars.outputs.alpine_version }}|g"
-          sed -i "$SED_REPO" apko.yaml
-          
-          # Optional: Here you could add logic to pin exact package versions
-          # for better auditability as requested by the user.
-          
+          export ALPINE_RELEASE=${{ matrix.alpine }}
+          envsubst < apko.yaml.tmpl > apko.yaml
           cat apko.yaml
 
       - name: Log in to GHCR
@@ -53,37 +47,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Note: GitLab Registry login would require secrets.GITLAB_TOKEN
-      # - name: Log in to GitLab Registry
-      #   uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-      #   with:
-      #     registry: registry.gitlab.com
-      #     username: ${{ secrets.GITLAB_USER }}
-      #     password: ${{ secrets.GITLAB_TOKEN }}
-
       - name: Setup apko
         uses: chainguard-dev/actions/setup-apko@main
+
+      - name: Determine Tags
+        id: tags
+        run: |
+          BASE="ghcr.io/${{ github.repository }}"
+          TAGS="$BASE:${{ matrix.alpine }}"
+          
+          if [ "${{ matrix.is_latest }}" = "true" ]; then
+            TAGS="$TAGS,$BASE:latest,$BASE:edge,$BASE:edge-alpine-edge"
+          fi
+          
+          if [ -n "${{ matrix.alias }}" ]; then
+            TAGS="$TAGS,$BASE:${{ matrix.alias }}-alpine${{ matrix.alpine }}"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Publish to GHCR
         id: publish-ghcr
         uses: chainguard-images/actions/apko-publish@1db7b1f97da9425b3e8e9846dc3ca2b16c65f55d # v1.0.22
         with:
           config: apko.yaml
-          tag: ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.tag }}
+          tag: ${{ steps.tags.outputs.tags }}
           keyring-append: keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
           archs: x86_64,aarch64
 
       - name: Generate SBOM
         run: |
-          apko build apko.yaml tor-relay:${{ steps.vars.outputs.tag }} output.tar --arch x86_64,aarch64 --sbom-path ./sbom.spdx.json
+          apko build apko.yaml tor-relay:${{ matrix.alpine }} output.tar --arch x86_64,aarch64 --sbom-path ./sbom-${{ matrix.alpine }}.spdx.json
           
-      - name: Upload apko.yaml and SBOM as Artifacts
+      - name: Upload Build Assets
         uses: actions/upload-artifact@v4
         with:
-          name: release-assets-${{ steps.vars.outputs.tag }}
+          name: assets-${{ matrix.alpine }}
           path: |
             apko.yaml
-            sbom.spdx.json
+            sbom-${{ matrix.alpine }}.spdx.json
 
       - name: Create Release Asset (on tags)
         if: startsWith(github.ref, 'refs/tags/')
@@ -91,8 +93,8 @@ jobs:
         with:
           files: |
             apko.yaml
-            sbom.spdx.json
-          body: "Hardened Tor Relay Release - Locked configuration and SBOM attached."
+            sbom-${{ matrix.alpine }}.spdx.json
+          body: "Hardened Tor Relay Matrix Release - ${{ matrix.alpine }}"
 
       - name: Attest Image
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.2.3

@@ -1,27 +1,22 @@
-# Versioning Strategy
+# Versioning & Matrix Strategy (v2)
 
-This repository follows a strict OCI tagging strategy to ensure stability, auditability, and ease of use for production workloads.
+This repository utilizes a build matrix to provide multiple permutations of Tor and Alpine versions.
 
-## Tag Types
+## The Tagging Matrix
 
-### `latest`
-- **Source:** Tracked against the latest Alpine stable release (currently **v3.23**).
-- **Update Frequency:** Updated on every push to the `main` branch.
-- **Use Case:** General use for users who want the most recent stable release.
+| Alpine Branch | Tor Package | Primary Tag | Aliases / Floating Tags | Stability |
+|---------------|-------------|-------------|-------------------------|-----------|
+| **edge**      | latest      | `latest`    | `edge`, `edge-alpine-edge` | **Bleeding Edge** |
+| **v3.23**     | 0.4.9.x     | `v3.23`     | `stable-alpine3.23`     | Stable |
+| **v3.22**     | 0.4.8.x     | `v3.22`     | `oldstable-alpine3.22`  | Legacy |
 
-### `edge`
-- **Source:** Tracked against **Alpine Edge**.
-- **Update Frequency:** Daily cron-triggered build.
-- **Use Case:** Testing and early adoption of new Tor or system package versions. **Not recommended for production relays.**
+## ⚠️ Critical Warning: `latest` Tracks Alpine Edge
 
-### `vX.Y.Z` (Semantic Tags)
-- **Source:** Mapped to specific Tor package releases and system snapshots.
-- **Update Frequency:** Created upon a GitHub/GitLab Release.
-- **Use Case:** Production environments where immutability and reproducibility are critical.
+By default, the `latest` tag points to the **Alpine Edge** build. This ensures that users receive the most up-to-date security patches and Tor features.
 
-## Auditability & Reproducibility
+- **For Production:** We strongly recommend pinning to a specific Alpine version tag (e.g., `ghcr.io/sparksis/tor-relay:v3.23`) if you require long-term stability and predictable behavior.
+- **For Testing:** Use `latest` or `edge` to stay on the absolute front line of development.
 
-For every release (Semantic or Edge), the exact `apko.yaml` used to build the image is published as a build asset. 
+## Auditability
 
-- **Dynamic Locking:** Package versions are pinned at build time to ensure that "re-pulling" a specific tag results in the exact same bit-for-bit environment.
-- **SBOMs:** Every image is accompanied by a Software Bill of Materials (SBOM) in SPDX/CycloneDX format, attached to the release metadata for vulnerability scanning.
+Every image in the matrix has its specific `apko.yaml` and SBOM published as build artifacts. You can verify the exact package versions used in any given tag by inspecting the attached SBOM in the GitHub/GitLab Release objects.

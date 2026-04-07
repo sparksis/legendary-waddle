@@ -46,3 +46,13 @@ To migrate or backup the identity:
 ### Common Issue: Clock Skew
 - **Symptoms:** `[warn] Certificate already expired, or not yet valid.`
 - **Fix:** Ensure the host node uses NTP (Network Time Protocol) to keep the clock synchronized.
+
+## Switching Tracks (Edge vs. Stable)
+
+If you are using the `latest` tag (which tracks Alpine Edge) and encounter a breaking change or instability, follow these steps to switch to a stable track:
+
+1. **Update Image Reference:** Change your deployment or docker-compose file to use a pinned version, such as `:v3.23`.
+2. **Apply Changes:** 
+   - K8s: `kubectl set image deployment/tor-relay tor-relay=ghcr.io/your-org/tor-relay:v3.23`
+   - Docker: `docker pull ghcr.io/your-org/tor-relay:v3.23 && docker-compose up -d`
+3. **Verify Identity:** Ensure your `/var/lib/tor` persistence is intact. Switching tracks does not require new keys, as the Tor configuration remains compatible across Alpine versions.
