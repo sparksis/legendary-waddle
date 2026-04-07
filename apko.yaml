@@ -2,8 +2,9 @@ contents:
   repositories:
     - https://dl-cdn.alpinelinux.org/alpine/v3.23/main
     - https://dl-cdn.alpinelinux.org/alpine/v3.23/community
+  keyring:
+    - keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
   packages:
-    - alpine-keys
     - tor
     - ca-certificates
     - musl
@@ -16,6 +17,7 @@ accounts:
     - username: tor
       uid: 100
       gid: 100
+      home: /var/lib/tor
   run-as: tor
 
 environment:
@@ -25,12 +27,17 @@ environment:
   TOR_CONTACT: none
 
 entrypoint:
-  command: /usr/bin/tor -f /etc/tor/torrc
+  command: ["/usr/bin/tor", "-f", "/etc/tor/torrc"]
 
 paths:
   - path: /etc/tor/torrc
     source: torrc
     permissions: 0644
+    uid: 100
+    gid: 100
+  - path: /var/lib/tor
+    type: directory
+    permissions: 0700
     uid: 100
     gid: 100
 
