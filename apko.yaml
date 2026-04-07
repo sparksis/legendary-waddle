@@ -25,7 +25,7 @@ environment:
   TOR_CONTACT: none
 
 entrypoint:
-  command: /usr/bin/tor --Log "notice stdout" --ExitRelay 0 --ORPort 9001 --Nickname ${TOR_NICKNAME} --BandwidthRate ${TOR_BANDWIDTH_RATE} --BandwidthBurst ${TOR_BANDWIDTH_BURST} --ContactInfo ${TOR_CONTACT}
+  command: /usr/bin/tor --Log "notice stdout" --ExitRelay 0 --ORPort 9001 --Nickname $TOR_NICKNAME --BandwidthRate $TOR_BANDWIDTH_RATE --BandwidthBurst $TOR_BANDWIDTH_BURST --ContactInfo $TOR_CONTACT
 
 archs:
   - x86_64
