@@ -1,0 +1,58 @@
+name: Mirror Upstream Tor (The Hydrator)
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Daily
+  workflow_dispatch:
+
+jobs:
+  detect-and-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        alpine: ["v3.22", "v3.23", "edge"]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout Template
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Fetch Tor Version
+        id: tor
+        run: |
+          REPO="https://dl-cdn.alpinelinux.org/alpine/${{ matrix.alpine }}/community"
+          MAIN="https://dl-cdn.alpinelinux.org/alpine/${{ matrix.alpine }}/main"
+          
+          FULL_VER=$(docker run --rm alpine:latest apk info --repository $REPO --repository $MAIN -v tor | head -n 1)
+          VERSION=${FULL_VER#tor-}
+          SEMVER=${VERSION%-r*}
+          
+          echo "full_version=$VERSION" >> $GITHUB_OUTPUT
+          echo "semver=$SEMVER" >> $GITHUB_OUTPUT
+          echo "Detected Tor $VERSION for Alpine ${{ matrix.alpine }}"
+
+      - name: Hydrate apko.yaml
+        run: |
+          export ALPINE_RELEASE=${{ matrix.alpine }}
+          envsubst < apko.yaml.tmpl > apko.yaml
+          
+          # Manually pin the version in the generated file
+          sed -i "s/- tor/- tor=${{ steps.tor.outputs.full_version }}/" apko.yaml
+          cat apko.yaml
+
+      - name: Check and Create Release
+        run: |
+          # Release tag format: <tor-version>-<alpine-version>
+          TAG="${{ steps.tor.outputs.semver }}-${{ matrix.alpine }}"
+          
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Skipping."
+          else
+            echo "Creating new release $TAG"
+            gh release create "$TAG" "apko.yaml" \
+              --title "Tor $TAG" \
+              --notes "Automated mirror of Tor ${{ steps.tor.outputs.semver }} on Alpine ${{ matrix.alpine }}."
+          fi
