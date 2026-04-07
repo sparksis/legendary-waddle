@@ -41,7 +41,7 @@ jobs:
 
       - name: Publish to GHCR
         id: publish
-        uses: chainguard-images/actions/apko-publish@02af444f58bd4beb9611d234997a860fa94d1cf8 # v1.0.22
+        uses: chainguard-images/actions/apko-publish@1db7b1f97da9425b3e8e9846dc3ca2b16c65f55d # v1.0.22
         with:
           config: apko.yaml
           tag: ${{ steps.meta.outputs.tags }}
