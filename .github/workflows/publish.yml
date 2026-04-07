@@ -30,9 +30,10 @@ jobs:
             type=ref,event=pr
             type=sha
             type=raw,value=snapshot
+          sep-tags: " "
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -47,9 +48,18 @@ jobs:
           keyring-append: keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
           archs: x86_64,aarch64
 
+      - name: Extract Digest
+        id: digest
+        run: |
+          # apko-publish outputs the full reference, e.g., repo@sha256:xxx
+          # We need just the sha256:xxx part for the attestation action
+          RAW_DIGEST="${{ steps.publish.outputs.digest }}"
+          DIGEST=$(echo "${RAW_DIGEST}" | cut -d'@' -f2)
+          echo "value=${DIGEST}" >> $GITHUB_OUTPUT
+
       - name: Attest Image
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2.2.3
         with:
           subject-name: ghcr.io/${{ github.repository }}
-          subject-digest: ${{ steps.publish.outputs.digest }}
+          subject-digest: ${{ steps.digest.outputs.value }}
           push-to-registry: true
