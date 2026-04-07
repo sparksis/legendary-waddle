@@ -1,0 +1,26 @@
+name: Publish Tor Relay Image
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  publish-ghcr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Publish to GHCR
+        uses: chainguard-dev/actions/apko-publish@main
+        with:
+          config: apko.yaml
+          tag: ghcr.io/${{ github.repository }}:latest
+          keyring-append: /etc/apk/keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
+          archs: x86_64,aarch64

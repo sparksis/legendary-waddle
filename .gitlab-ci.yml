@@ -1,0 +1,6 @@
+publish:
+  image: cgr.dev/chainguard/apko
+  stage: deploy
+  script:
+    - apko login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - apko publish apko.yaml $CI_REGISTRY_IMAGE:latest --arch x86_64,aarch64
