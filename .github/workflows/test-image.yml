@@ -1,0 +1,53 @@
+name: Test Tor Relay Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to test (e.g., ghcr.io/sparksis/legendary-waddle:latest)'
+        required: true
+        default: 'ghcr.io/sparksis/legendary-waddle:latest'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull image
+        run: docker pull ${{ github.event.inputs.image_tag }}
+
+      - name: Run container
+        run: |
+          docker run -d --name test-relay \
+            -e TOR_NICKNAME=TestRelay \
+            -e TOR_BANDWIDTH_RATE="1 MByte" \
+            -e TOR_BANDWIDTH_BURST="2 MByte" \
+            ${{ github.event.inputs.image_tag }}
+
+      - name: Wait and check logs
+        run: |
+          echo "Waiting for Tor to start (10s)..."
+          sleep 10
+          LOGS=$(docker logs test-relay)
+          echo "--- CONTAINER LOGS ---"
+          echo "$LOGS"
+          echo "-----------------------"
+          
+          if echo "$LOGS" | grep -q "Unable to parse"; then
+            echo "❌ FAILED: Found variable expansion error in logs."
+            exit 1
+          fi
+          
+          if echo "$LOGS" | grep -q "Reading config failed"; then
+            echo "❌ FAILED: Tor failed to read configuration."
+            exit 1
+          fi
+          
+          if echo "$LOGS" | grep -q "Bootstrapped"; then
+            echo "✅ SUCCESS: Tor started and began bootstrapping."
+          else
+            echo "⚠️ WARNING: Tor did not report bootstrapping yet, but no critical errors found."
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f test-relay

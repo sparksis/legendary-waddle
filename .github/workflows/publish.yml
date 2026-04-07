@@ -63,3 +63,86 @@ jobs:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.digest.outputs.value }}
           push-to-registry: true
+
+  verify:
+    needs: publish-ghcr
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Image Tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "IMAGE=ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "IMAGE=ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Pull and Run Verification
+        run: |
+          IMAGE="${{ steps.tag.outputs.IMAGE }}"
+          echo "Testing image: $IMAGE"
+          docker pull "$IMAGE"
+          
+          docker run -d --name test-relay \
+            -e TOR_NICKNAME=TestRelay \
+            -e TOR_BANDWIDTH_RATE="1 MByte" \
+            -e TOR_BANDWIDTH_BURST="2 MByte" \
+            "$IMAGE"
+          
+          echo "Waiting for Tor to bootstrap..."
+          # Wait up to 10 minutes for bootstrap
+          MAX_WAIT=600
+          ELAPSED=0
+          BOOTSTRAPPED=false
+          
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            LOGS=$(docker logs test-relay)
+            
+            # Immediate failure checks
+            if echo "$LOGS" | grep -q "Unable to parse"; then
+              echo "❌ FAILED: Variable expansion error detected."
+              docker logs test-relay
+              exit 1
+            fi
+            if echo "$LOGS" | grep -q "Reading config failed"; then
+              echo "❌ FAILED: Tor config parsing failed."
+              docker logs test-relay
+              exit 1
+            fi
+            
+            # Success check
+            if echo "$LOGS" | grep -q "Bootstrapped 100% (done): Done"; then
+              echo "✅ Bootstrapped 100%! Waiting 20s more for stability..."
+              sleep 20
+              BOOTSTRAPPED=true
+              break
+            fi
+            
+            echo "Still bootstrapping ($ELAPSED/600s)..."
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+          
+          LOGS=$(docker logs test-relay)
+          echo "--- FINAL CONTAINER LOGS ---"
+          echo "$LOGS"
+          echo "----------------------------"
+          
+          if [ "$BOOTSTRAPPED" != "true" ]; then
+            echo "❌ FAILED: Tor did not reach 100% bootstrap within 10 minutes."
+            exit 1
+          fi
+          
+          echo "✅ SUCCESS: Tor is healthy and fully bootstrapped."
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f test-relay
