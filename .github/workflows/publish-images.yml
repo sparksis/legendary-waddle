@@ -1,0 +1,99 @@
+name: OCI Builder (Native Mirror)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag to build"
+        required: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Fetch Alpine Keys
+        run: |
+          mkdir -p keys
+          # In a real scenario, this would be a secret or fetched from a trusted URL
+          # Here we fetch from this repo's raw main branch since we have no checkout
+          # Note: Adjusting for the actual repo name if necessary
+          curl -sSL "https://raw.githubusercontent.com/${{ github.repository }}/main/keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub" -o keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
+
+      - name: Download Release Assets
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag_name }}"
+          gh release download "$TAG" --pattern "apko-*.yaml"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Publish Matrices
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag_name }}"
+          BASE="ghcr.io/${{ github.repository }}"
+          
+          # Setup setup-apko (using docker directly to avoid checkout)
+          # Alternatively, use chainguard-images/actions/apko-publish which handles this.
+          # Since we are iterating, we'll use a loop.
+          
+          for CONFIG in apko-*.yaml; do
+            # Extract Alpine version from filename: apko-<alpine>-<tor>.yaml
+            ALPINE=$(echo "$CONFIG" | cut -d'-' -f2)
+            
+            # Construct Tags
+            # Primary: <tor-version>-alpine<alpine-version>
+            OCI_TAGS="$BASE:$TAG-$ALPINE"
+            
+            # Special logic for edge
+            if [ "$ALPINE" = "edge" ]; then
+              OCI_TAGS="$OCI_TAGS,$BASE:latest,$BASE:edge"
+            fi
+            
+            echo "Building $ALPINE with config $CONFIG"
+            # Using apko-publish action (it can work without checkout if config is provided)
+            # But we are in a loop, so we might need a dynamic step. 
+            # GitHub Actions doesn't support loops over steps easily, so we use docker.
+          done
+
+      - name: Setup apko
+        uses: chainguard-images/actions/setup-apko@1db7b1f97da9425b3e8e9846dc3ca2b16c65f55d
+
+      - name: Build and Publish (Loop)
+        id: loop
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag_name }}"
+          BASE="ghcr.io/${{ github.repository }}"
+          
+          for CONFIG in apko-*.yaml; do
+            ALPINE=$(echo "$CONFIG" | cut -d'-' -f2)
+            OCI_TAGS="$BASE:$TAG-$ALPINE"
+            
+            if [ "$ALPINE" = "edge" ]; then
+              OCI_TAGS="$OCI_TAGS,$BASE:latest,$BASE:edge"
+            fi
+            
+            # Generate SBOM for each
+            SBOM="sbom-$ALPINE.json"
+            
+            # We use apko directly since we have it from setup-apko
+            apko publish "$CONFIG" "$OCI_TAGS" \
+              --arch x86_64,aarch64 \
+              -k keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub \
+              --sbom-path "$SBOM"
+            
+            # Note: We can only attest one image easily here without complex logic.
+            # Usually, you'd want to use the action's output digest.
+          done

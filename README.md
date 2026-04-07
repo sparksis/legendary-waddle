@@ -34,6 +34,13 @@ The relay entrypoint supports the following variables:
 | `TOR_BANDWIDTH_BURST` | Maximum bandwidth burst | `2 MByte` |
 | `TOR_CONTACT` | Contact information for the operator | `operator@example.com` |
 
+## Supported Tags (OCI Registry)
+
+Tags are dynamically generated based on the Alpine Linux APK index.
+
+- **Pinned Releases**: `<tor-version>-alpine<alpine-version>` (e.g., `0.4.8.13-v3.23`)
+- **Floating Tags**: `latest` and `edge` (both tracking Alpine Edge for security patches).
+
 ## Operational Excellence
 
 - **Versioning:** See [VERSIONING.md](VERSIONING.md) for our tagging strategy.

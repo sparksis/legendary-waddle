@@ -1,22 +1,24 @@
-# Versioning & Matrix Strategy (v2)
+# Versioning & Mirror Strategy
 
-This repository utilizes a build matrix to provide multiple permutations of Tor and Alpine versions.
+This repository strictly mirrors the Tor Upstream Version available in the Alpine Linux repositories. We do not use independent semantic versioning.
 
-## The Tagging Matrix
+## Upstream Mapping
 
-| Alpine Branch | Tor Package | Primary Tag | Aliases / Floating Tags | Stability |
-|---------------|-------------|-------------|-------------------------|-----------|
-| **edge**      | latest      | `latest`    | `edge`, `edge-alpine-edge` | **Bleeding Edge** |
-| **v3.23**     | 0.4.9.x     | `v3.23`     | `stable-alpine3.23`     | Stable |
-| **v3.22**     | 0.4.8.x     | `v3.22`     | `oldstable-alpine3.22`  | Legacy |
+The release tag in this repository corresponds exactly to the Tor version being wrapped.
 
-## ⚠️ Critical Warning: `latest` Tracks Alpine Edge
+- **Direct Mirror**: If you pull tag `0.4.8.13`, you are getting the Tor `0.4.8.13` binary from Alpine.
+- **Alpine Permutations**: For every Tor version, we build across multiple Alpine release tracks (v3.22, v3.23, edge).
 
-By default, the `latest` tag points to the **Alpine Edge** build. This ensures that users receive the most up-to-date security patches and Tor features.
+## Tagging Logic
 
-- **For Production:** We strongly recommend pinning to a specific Alpine version tag (e.g., `ghcr.io/sparksis/tor-relay:v3.23`) if you require long-term stability and predictable behavior.
-- **For Testing:** Use `latest` or `edge` to stay on the absolute front line of development.
+OCI images in the container registry are tagged as follows:
 
-## Auditability
+| Upstream Tor | Alpine Track | OCI Tag | Description |
+|--------------|--------------|---------|-------------|
+| **X.Y.Z**    | **edge**     | `X.Y.Z-edge`, `latest`, `edge` | Most up-to-date security patches. |
+| **X.Y.Z**    | **v3.23**    | `X.Y.Z-v3.23` | Stable production release. |
+| **X.Y.Z**    | **v3.22**    | `X.Y.Z-v3.22` | Legacy track. |
 
-Every image in the matrix has its specific `apko.yaml` and SBOM published as build artifacts. You can verify the exact package versions used in any given tag by inspecting the attached SBOM in the GitHub/GitLab Release objects.
+## Immutability & Auditability
+
+Every release is "frozen" at hydration time. The `apko.yaml` asset attached to each GitHub Release contains hard-pinned package versions (e.g., `tor=0.4.8.13-r0`). This guarantees that the OCI build is reproducible and free from accidental upstream updates between the release and deployment.
