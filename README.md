@@ -5,7 +5,7 @@ This repository contains an `apko` configuration to build a minimal, hardened, a
 ## Features
 
 - **Minimalist:** No shell, no unnecessary packages. Built with `apko` for a tiny footprint (<15MB).
-- **Hardened:** Runs as a non-root `tor` user (UID/GID 100).
+- **Hardened:** Runs as a non-root `tor` user (UID/GID 101).
 - **Multi-Arch:** Supports both `x86_64` and `aarch64`.
 - **Dynamic Configuration:** Uses environment variables to configure the relay.
 - **Dual Registry:** Published to GitHub Container Registry (GHCR) and GitLab Container Registry.
@@ -19,7 +19,7 @@ The relay can be configured using the following environment variables:
 | `TOR_NICKNAME` | The nickname for the Tor relay | `ApkoRelay` |
 | `TOR_BANDWIDTH_RATE` | Average bandwidth to use | `1 MByte` |
 | `TOR_BANDWIDTH_BURST` | Maximum bandwidth burst | `2 MByte` |
-| `TOR_CONTACT` | Contact info for the relay operator | `none` |
+| `TOR_CONTACT` | Contact info for the relay operator | `operator@example.com` |
 
 ## Running the Relay
 
