@@ -24,10 +24,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup apko
+        uses: chainguard-dev/actions/setup-apko@f45211d3e8f9d2676c6b8cdd6a765435e06c819d # v1.6.13
+
       - name: Publish to GHCR
-        uses: chainguard-dev/actions/apko-publish@v0.1.1
-        with:
-          config: apko.yaml
-          tag: ghcr.io/${{ github.repository }}:latest
-          keyring-append: keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
-          archs: x86_64,aarch64
+        run: |
+          apko publish apko.yaml ghcr.io/${{ github.repository }}:latest --arch x86_64,aarch64
