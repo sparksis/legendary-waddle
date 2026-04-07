@@ -2,8 +2,10 @@ name: Publish Tor Relay Matrix
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'refactor/*', 'feat/*' ]
     tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
