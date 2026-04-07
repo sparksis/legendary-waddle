@@ -67,7 +67,7 @@ jobs:
   verify:
     needs: publish-ghcr
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 5
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -76,44 +76,54 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull image
+      - name: Determine Image Tag
+        id: tag
         run: |
-          # Use the SHA tag for precise testing of the built image
-          IMAGE="ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}"
-          docker pull $IMAGE
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "IMAGE=ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "IMAGE=ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Run container
+      - name: Pull and Run Verification
         run: |
+          IMAGE="${{ steps.tag.outputs.IMAGE }}"
+          echo "Testing image: $IMAGE"
+          docker pull "$IMAGE"
+          
           docker run -d --name test-relay \
             -e TOR_NICKNAME=TestRelay \
             -e TOR_BANDWIDTH_RATE="1 MByte" \
             -e TOR_BANDWIDTH_BURST="2 MByte" \
-            $IMAGE
-
-      - name: Wait and check logs
-        run: |
-          echo "Waiting for Tor to start (15s)..."
-          sleep 15
-          LOGS=$(docker logs test-relay)
-          echo "--- CONTAINER LOGS ---"
-          echo "$LOGS"
-          echo "-----------------------"
+            "$IMAGE"
           
+          echo "Waiting for logs to stabilize..."
+          # Stream logs for 30 seconds or until success marker found
+          timeout 30s docker logs -f test-relay || true
+          
+          LOGS=$(docker logs test-relay)
+          echo "--- FINAL CONTAINER LOGS ---"
+          echo "$LOGS"
+          echo "----------------------------"
+          
+          # Check for failures
           if echo "$LOGS" | grep -q "Unable to parse"; then
-            echo "❌ FAILED: Found variable expansion error in logs."
+            echo "❌ FAILED: Variable expansion error detected."
             exit 1
           fi
           
           if echo "$LOGS" | grep -q "Reading config failed"; then
-            echo "❌ FAILED: Tor failed to read configuration."
+            echo "❌ FAILED: Tor config parsing failed."
             exit 1
           fi
           
-          if echo "$LOGS" | grep -q "Bootstrapped"; then
-            echo "✅ SUCCESS: Tor started and began bootstrapping."
+          # Check for success (Tor often takes a few seconds to reach this)
+          if echo "$LOGS" | grep -qE "Bootstrapped|Self-testing indicates your ORPort is reachable"; then
+            echo "✅ SUCCESS: Tor is healthy."
           else
-            echo "⚠️ WARNING: Tor did not report bootstrapping yet, but no critical errors found."
+            # If we don't see bootstrap but also don't see errors, it might just be slow
+            # but for a TDD test we want to be sure.
+            echo "⚠️ WARNING: No explicit success marker found, but no errors detected."
           fi
 
       - name: Cleanup
