@@ -63,3 +63,59 @@ jobs:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.digest.outputs.value }}
           push-to-registry: true
+
+  verify:
+    needs: publish-ghcr
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: |
+          # Use the SHA tag for precise testing of the built image
+          IMAGE="ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}"
+          docker pull $IMAGE
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Run container
+        run: |
+          docker run -d --name test-relay \
+            -e TOR_NICKNAME=TestRelay \
+            -e TOR_BANDWIDTH_RATE="1 MByte" \
+            -e TOR_BANDWIDTH_BURST="2 MByte" \
+            $IMAGE
+
+      - name: Wait and check logs
+        run: |
+          echo "Waiting for Tor to start (15s)..."
+          sleep 15
+          LOGS=$(docker logs test-relay)
+          echo "--- CONTAINER LOGS ---"
+          echo "$LOGS"
+          echo "-----------------------"
+          
+          if echo "$LOGS" | grep -q "Unable to parse"; then
+            echo "❌ FAILED: Found variable expansion error in logs."
+            exit 1
+          fi
+          
+          if echo "$LOGS" | grep -q "Reading config failed"; then
+            echo "❌ FAILED: Tor failed to read configuration."
+            exit 1
+          fi
+          
+          if echo "$LOGS" | grep -q "Bootstrapped"; then
+            echo "✅ SUCCESS: Tor started and began bootstrapping."
+          else
+            echo "⚠️ WARNING: Tor did not report bootstrapping yet, but no critical errors found."
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f test-relay
