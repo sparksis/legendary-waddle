@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tor-relay
+spec:
+  selector:
+    app: tor-relay
+  ports:
+  - protocol: TCP
+    port: 9001
+    targetPort: 9001
+    name: or-port
+  type: LoadBalancer
