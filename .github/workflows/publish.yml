@@ -1,0 +1,65 @@
+name: Publish Tor Relay Image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  publish-ghcr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v5.6.1
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=pr
+            type=sha
+            type=raw,value=snapshot
+          sep-tags: " "
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to GHCR
+        id: publish
+        uses: chainguard-images/actions/apko-publish@1db7b1f97da9425b3e8e9846dc3ca2b16c65f55d # v1.0.22
+        with:
+          config: apko.yaml
+          tag: ${{ steps.meta.outputs.tags }}
+          keyring-append: keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
+          archs: x86_64,aarch64
+
+      - name: Extract Digest
+        id: digest
+        run: |
+          # apko-publish outputs the full reference, e.g., repo@sha256:xxx
+          # We need just the sha256:xxx part for the attestation action
+          RAW_DIGEST="${{ steps.publish.outputs.digest }}"
+          DIGEST=$(echo "${RAW_DIGEST}" | cut -d'@' -f2)
+          echo "value=${DIGEST}" >> $GITHUB_OUTPUT
+
+      - name: Attest Image
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.2.3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.digest.outputs.value }}
+          push-to-registry: true
