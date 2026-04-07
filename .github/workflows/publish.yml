@@ -3,8 +3,6 @@ name: Publish Tor Relay Image
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -14,42 +12,15 @@ jobs:
       contents: read
       packages: write
       id-token: write
-      attestations: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.6.1
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=pr
-            type=sha
-            type=raw,value=snapshot
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Publish to GHCR
-        id: publish
-        uses: chainguard-images/actions/apko-publish@02af444f58bd4beb9611d234997a860fa94d1cf8 # v1.0.22
+        uses: chainguard-dev/actions/apko-publish@main
         with:
           config: apko.yaml
-          tag: ${{ steps.meta.outputs.tags }}
-          keyring-append: keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
+          tag: ghcr.io/${{ github.repository }}:latest
+          keyring-append: /etc/apk/keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
           archs: x86_64,aarch64
-
-      - name: Attest Image
-        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2.2.3
-        with:
-          subject-name: ghcr.io/${{ github.repository }}
-          subject-digest: ${{ steps.publish.outputs.digest }}
-          push-to-registry: true
