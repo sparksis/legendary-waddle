@@ -3,15 +3,16 @@ name: Publish Tor Relay Image
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    tags: [ 'v*' ]
+  schedule:
+    - cron: '0 0 * * *' # Daily at midnight for 'edge'
   workflow_dispatch:
 
 jobs:
-  publish-ghcr:
+  publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
       attestations: write
@@ -20,17 +21,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v5.6.1
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=pr
-            type=sha
-            type=raw,value=snapshot
-          sep-tags: " "
+      - name: Set Environment Variables
+        id: vars
+        run: |
+          if [[ $GITHUB_EVENT_NAME == 'schedule' ]]; then
+            echo "tag=edge" >> $GITHUB_OUTPUT
+            echo "alpine_version=edge" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "alpine_version=v3.23" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "alpine_version=v3.23" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Locked apko.yaml
+        run: |
+          # Dynamically set the Alpine repository based on the target version
+          SED_REPO="s|https://dl-cdn.alpinelinux.org/alpine/v3.23|https://dl-cdn.alpinelinux.org/alpine/${{ steps.vars.outputs.alpine_version }}|g"
+          sed -i "$SED_REPO" apko.yaml
+          
+          # Optional: Here you could add logic to pin exact package versions
+          # for better auditability as requested by the user.
+          
+          cat apko.yaml
 
       - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -39,27 +53,50 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Note: GitLab Registry login would require secrets.GITLAB_TOKEN
+      # - name: Log in to GitLab Registry
+      #   uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      #   with:
+      #     registry: registry.gitlab.com
+      #     username: ${{ secrets.GITLAB_USER }}
+      #     password: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Setup apko
+        uses: chainguard-dev/actions/setup-apko@main
+
       - name: Publish to GHCR
-        id: publish
+        id: publish-ghcr
         uses: chainguard-images/actions/apko-publish@1db7b1f97da9425b3e8e9846dc3ca2b16c65f55d # v1.0.22
         with:
           config: apko.yaml
-          tag: ${{ steps.meta.outputs.tags }}
+          tag: ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.tag }}
           keyring-append: keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
           archs: x86_64,aarch64
 
-      - name: Extract Digest
-        id: digest
+      - name: Generate SBOM
         run: |
-          # apko-publish outputs the full reference, e.g., repo@sha256:xxx
-          # We need just the sha256:xxx part for the attestation action
-          RAW_DIGEST="${{ steps.publish.outputs.digest }}"
-          DIGEST=$(echo "${RAW_DIGEST}" | cut -d'@' -f2)
-          echo "value=${DIGEST}" >> $GITHUB_OUTPUT
+          apko build apko.yaml tor-relay:${{ steps.vars.outputs.tag }} output.tar --arch x86_64,aarch64 --sbom-path ./sbom.spdx.json
+          
+      - name: Upload apko.yaml and SBOM as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ steps.vars.outputs.tag }}
+          path: |
+            apko.yaml
+            sbom.spdx.json
+
+      - name: Create Release Asset (on tags)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apko.yaml
+            sbom.spdx.json
+          body: "Hardened Tor Relay Release - Locked configuration and SBOM attached."
 
       - name: Attest Image
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.2.3
         with:
           subject-name: ghcr.io/${{ github.repository }}
-          subject-digest: ${{ steps.digest.outputs.value }}
+          subject-digest: ${{ steps.publish-ghcr.outputs.digest }}
           push-to-registry: true

@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tor-relay
+  labels:
+    app: tor-relay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tor-relay
+  template:
+    metadata:
+      labels:
+        app: tor-relay
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 101
+        runAsGroup: 101
+        runAsNonRoot: true
+        fsGroup: 101
+      containers:
+      - name: tor-relay
+        image: ghcr.io/your-org/tor-relay:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: TOR_NICKNAME
+          valueFrom:
+            configMapKeyRef:
+              name: tor-config
+              key: nickname
+        ports:
+        - containerPort: 9001
+          name: or-port
+        volumeMounts:
+        - name: tor-data
+          mountPath: /var/lib/tor
+      volumes:
+      - name: tor-data
+        persistentVolumeClaim:
+          claimName: tor-data-pvc

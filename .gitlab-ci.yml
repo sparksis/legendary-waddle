@@ -1,11 +1,36 @@
 stages:
-  - deploy
+  - build
+  - publish
 
-publish:
-  image: cgr.dev/chainguard/apko
-  stage: deploy
+variables:
+  APKO_IMAGE: cgr.dev/chainguard/apko:latest
+
+# Build and generate SBOM for auditability
+build-sbom:
+  image: $APKO_IMAGE
+  stage: build
+  script:
+    - apko build apko.yaml tor-relay:build output.tar --arch x86_64,aarch64 --sbom-path sbom.spdx.json
+  artifacts:
+    paths:
+      - sbom.spdx.json
+      - apko.yaml
+
+# Publish images to GitLab Registry
+publish-latest:
+  image: $APKO_IMAGE
+  stage: publish
   script:
     - apko login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
     - apko publish apko.yaml $CI_REGISTRY_IMAGE:latest --arch x86_64,aarch64 -k keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
   only:
     - main
+
+publish-tag:
+  image: $APKO_IMAGE
+  stage: publish
+  script:
+    - apko login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - apko publish apko.yaml $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG --arch x86_64,aarch64 -k keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
+  only:
+    - tags
