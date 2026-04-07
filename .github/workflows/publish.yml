@@ -38,20 +38,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup apko
-        uses: chainguard-dev/actions/setup-apko@f45211d3e8f9d2676c6b8cdd6a765435e06c819d # v1.6.13
-
       - name: Publish to GHCR
         id: publish
-        run: |
-          # Convert newline-separated tags to space-separated for apko
-          TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
-          
-          apko publish apko.yaml $TAGS --arch x86_64,aarch64 --image-refs output.images
-          
-          # Extract first digest for attestation
-          DIGEST=$(cat output.images | head -n 1 | cut -d'@' -f2)
-          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+        uses: chainguard-images/actions/apko-publish@02af444f58bd4beb9611d234997a860fa94d1cf8 # v1.0.22
+        with:
+          config: apko.yaml
+          tag: ${{ steps.meta.outputs.tags }}
+          keyring-append: keys/alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub
+          archs: x86_64,aarch64
 
       - name: Attest Image
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2.2.3
