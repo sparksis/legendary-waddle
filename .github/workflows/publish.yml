@@ -2,7 +2,7 @@ name: Publish Tor Relay Matrix
 
 on:
   push:
-    branches: [ main, 'refactor/*', 'feat/*' ]
+    branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
