@@ -67,7 +67,7 @@ jobs:
   verify:
     needs: publish-ghcr
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -97,34 +97,51 @@ jobs:
             -e TOR_BANDWIDTH_BURST="2 MByte" \
             "$IMAGE"
           
-          echo "Waiting for logs to stabilize..."
-          # Stream logs for 30 seconds or until success marker found
-          timeout 30s docker logs -f test-relay || true
+          echo "Waiting for Tor to bootstrap..."
+          # Wait up to 10 minutes for bootstrap
+          MAX_WAIT=600
+          ELAPSED=0
+          BOOTSTRAPPED=false
+          
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            LOGS=$(docker logs test-relay)
+            
+            # Immediate failure checks
+            if echo "$LOGS" | grep -q "Unable to parse"; then
+              echo "❌ FAILED: Variable expansion error detected."
+              docker logs test-relay
+              exit 1
+            fi
+            if echo "$LOGS" | grep -q "Reading config failed"; then
+              echo "❌ FAILED: Tor config parsing failed."
+              docker logs test-relay
+              exit 1
+            fi
+            
+            # Success check
+            if echo "$LOGS" | grep -q "Bootstrapped 100% (done): Done"; then
+              echo "✅ Bootstrapped 100%! Waiting 20s more for stability..."
+              sleep 20
+              BOOTSTRAPPED=true
+              break
+            fi
+            
+            echo "Still bootstrapping ($ELAPSED/600s)..."
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
           
           LOGS=$(docker logs test-relay)
           echo "--- FINAL CONTAINER LOGS ---"
           echo "$LOGS"
           echo "----------------------------"
           
-          # Check for failures
-          if echo "$LOGS" | grep -q "Unable to parse"; then
-            echo "❌ FAILED: Variable expansion error detected."
+          if [ "$BOOTSTRAPPED" != "true" ]; then
+            echo "❌ FAILED: Tor did not reach 100% bootstrap within 10 minutes."
             exit 1
           fi
           
-          if echo "$LOGS" | grep -q "Reading config failed"; then
-            echo "❌ FAILED: Tor config parsing failed."
-            exit 1
-          fi
-          
-          # Check for success (Tor often takes a few seconds to reach this)
-          if echo "$LOGS" | grep -qE "Bootstrapped|Self-testing indicates your ORPort is reachable"; then
-            echo "✅ SUCCESS: Tor is healthy."
-          else
-            # If we don't see bootstrap but also don't see errors, it might just be slow
-            # but for a TDD test we want to be sure.
-            echo "⚠️ WARNING: No explicit success marker found, but no errors detected."
-          fi
+          echo "✅ SUCCESS: Tor is healthy and fully bootstrapped."
 
       - name: Cleanup
         if: always()
